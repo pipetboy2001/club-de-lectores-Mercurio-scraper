@@ -13,7 +13,7 @@ async function getComicLinks() {
   const $ = cheerio.load(html);
   const comics = [];
 
-  $('.tc-destacados-item').each((i, el) => {
+  $('.tc-destacados-item').each((_, el) => {
     const title = $(el).find('.tc-destacados-item__titulo').text().trim() || 'Sin título';
     const url = $(el).find('.tc-destacados-item__comprar a').attr('href');
 
@@ -41,16 +41,41 @@ async function fetchStock(comic) {
 
     return { ...comic, stock };
   } catch (err) {
-    console.error(`❌ Error al leer stock de ${comic.title}:`, err.message);
+    console.error(`❌ Error al leer stock de "${comic.title}":`, err.message);
     return { ...comic, stock: -1 };
   }
+}
+
+function printComics(comics) {
+  console.log('\n📉 Cómics ordenados por stock (menos a más):\n');
+
+  comics.forEach(({ title, stock, url }) => {
+    let stockText = '';
+    let emoji = '';
+
+    if (stock === 0) {
+      stockText = '😱 AGOTADO';
+      emoji = '🔴';
+    } else if (stock > 0 && stock <= 5) {
+      stockText = `⚠️ Quedan ${stock} unidades`;
+      emoji = '🟠';
+    } else if (stock > 5 && stock <= 20) {
+      stockText = `🟡 Stock medio: ${stock}`;
+      emoji = '🟡';
+    } else {
+      stockText = `✅ Stock OK: ${stock}`;
+      emoji = '🟢';
+    }
+
+    console.log(`${emoji}  ${title}\n    → ${stockText}\n    → Link: ${url}\n`);
+  });
 }
 
 (async () => {
   console.log('🚀 Obteniendo lista de cómics...');
   let comics = await getComicLinks();
 
-  console.log(`🧩 Encontrados ${comics.length} ítems. Solicitando stock...`);
+  console.log(`🧩 Encontrados ${comics.length} ítems. Consultando stock...`);
 
   const promises = comics.map(c => fetchStock(c));
   comics = await Promise.all(promises);
@@ -59,8 +84,5 @@ async function fetchStock(comic) {
     .filter(c => c.stock >= 0)
     .sort((a, b) => a.stock - b.stock);
 
-  console.log('📉 Cómics ordenados por menos stock:');
-  comics.forEach(c => {
-    console.log(`• ${c.title} — ${c.stock} unidades — ${c.url}`);
-  });
+  printComics(comics);
 })();

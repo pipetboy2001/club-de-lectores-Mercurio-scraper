@@ -1,11 +1,23 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
 
 const BASE_URL = 'https://www.clubdelectores.cl/marvel-superheroes-clasico/';
 
-async function fetchHTML(url) {
-  const res = await axios.get(url);
-  return res.data;
+// fetchHTML con retry automático
+async function fetchHTML(url, retries = 3) {
+  try {
+    const res = await axios.get(url);
+    return res.data;
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`🔄 Reintentando ${url}... quedan ${retries} intentos`);
+      await new Promise(r => setTimeout(r, 1000));
+      return fetchHTML(url, retries - 1);
+    }
+    throw error;
+  }
 }
 
 async function getComicLinks() {
@@ -71,18 +83,40 @@ function printComics(comics) {
   });
 }
 
+function saveJSON(comics, filename = 'comics-stock.json') {
+  fs.writeFileSync(path.resolve(__dirname, filename), JSON.stringify(comics, null, 2));
+  console.log(`💾 Guardado JSON en ${filename}`);
+}
+
+function saveCSV(comics, filename = 'comics-stock.csv') {
+  const header = 'Título,Stock,URL\n';
+  const rows = comics.map(({ title, stock, url }) =>
+    `"${title.replace(/"/g, '""')}",${stock},"${url}"`
+  );
+  const csvContent = header + rows.join('\n');
+  fs.writeFileSync(path.resolve(__dirname, filename), csvContent);
+  console.log(`💾 Guardado CSV en ${filename}`);
+}
+
 (async () => {
-  console.log('🚀 Obteniendo lista de cómics...');
-  let comics = await getComicLinks();
+  try {
+    console.log('🚀 Obteniendo lista de cómics...');
+    let comics = await getComicLinks();
 
-  console.log(`🧩 Encontrados ${comics.length} ítems. Consultando stock...`);
+    console.log(`🧩 Encontrados ${comics.length} ítems. Consultando stock...`);
 
-  const promises = comics.map(c => fetchStock(c));
-  comics = await Promise.all(promises);
+    const promises = comics.map(c => fetchStock(c));
+    comics = await Promise.all(promises);
 
-  comics = comics
-    .filter(c => c.stock >= 0)
-    .sort((a, b) => a.stock - b.stock);
+    comics = comics
+      .filter(c => c.stock >= 0)
+      .sort((a, b) => a.stock - b.stock);
 
-  printComics(comics);
+    printComics(comics);
+    saveJSON(comics);
+    saveCSV(comics);
+
+  } catch (error) {
+    console.error('💥 Error fatal:', error.message);
+  }
 })();
